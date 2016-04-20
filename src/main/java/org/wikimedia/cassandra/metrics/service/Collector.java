@@ -30,6 +30,7 @@ import org.wikimedia.cassandra.metrics.CarbonVisitor;
 import org.wikimedia.cassandra.metrics.Discovery;
 import org.wikimedia.cassandra.metrics.Filter;
 import org.wikimedia.cassandra.metrics.JmxCollector;
+import org.wikimedia.cassandra.metrics.JmxCollectorFactory;
 
 import com.google.common.base.Optional;
 
@@ -51,13 +52,13 @@ public class Collector implements Job {
     public void execute(JobExecutionContext context) throws JobExecutionException {
         LOG.debug("Connection to {}", this.jvm.getJmxUrl());
 
-        try (JmxCollector j = new JmxCollector(this.jvm.getJmxUrl())) {
+        try (JmxCollector c = JmxCollectorFactory.create(this.jvm.getJmxUrl())) {
             LOG.debug("Connected to {}", this.jvm.getJmxUrl());
             LOG.debug("Connecting to {}:{}", this.carbonHost, this.carbonPort);
 
             try (CarbonVisitor v = new CarbonVisitor(this.carbonHost, this.carbonPort, prefix(this.instanceName), filter)) {
                 LOG.debug("Collecting...");
-                j.getSamples(v);
+                c.getSamples(v);
             }
             catch (CarbonException e) {
                 LOG.error("Carbon Error", e);
@@ -105,7 +106,7 @@ public class Collector implements Job {
     }
 
     public void setFilter(Object filter) {
-        this.filter = (filter != null) ? Optional.of((Filter)filter) : Optional.<Filter>absent();
+        this.filter = (filter != null) ? Optional.of((Filter) filter) : Optional.<Filter> absent();
     }
 
     @Override

@@ -1,4 +1,4 @@
-/* Copyright 2015 Eric Evans <eevans@wikimedia.org>
+/* Copyright 2016 Eric Evans <eevans@wikimedia.org>
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package org.wikimedia.cassandra.metrics;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.management.ManagementFactory.GARBAGE_COLLECTOR_MXBEAN_DOMAIN_TYPE;
 import static java.lang.management.ManagementFactory.MEMORY_MXBEAN_NAME;
 import static java.lang.management.ManagementFactory.MEMORY_POOL_MXBEAN_DOMAIN_TYPE;
@@ -32,7 +31,6 @@ import java.lang.management.RuntimeMXBean;
 import java.net.MalformedURLException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -47,54 +45,33 @@ import javax.management.remote.JMXServiceURL;
 
 import org.wikimedia.cassandra.metrics.JmxSample.Type;
 
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.yammer.metrics.reporting.JmxReporter;
 
 
-public class JmxCollector implements AutoCloseable {
+public abstract class JmxCollector implements AutoCloseable {
 
-    private static final String FORMAT_URL = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
+    static final String FORMAT_URL = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
 
-    private static final Map<String, Class<?>> mbeanClasses;
-    private static final Set<ObjectName> blacklist;
-
-    static {
-        mbeanClasses = new HashMap<String, Class<?>>();
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Gauge", JmxReporter.GaugeMBean.class);
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Timer", JmxReporter.TimerMBean.class);
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Counter", JmxReporter.CounterMBean.class);
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Meter", JmxReporter.MeterMBean.class);
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Histogram", JmxReporter.HistogramMBean.class);
-        mbeanClasses.put("com.yammer.metrics.reporting.JmxReporter$Meter", JmxReporter.MeterMBean.class);
-
-        blacklist = new HashSet<ObjectName>();
-        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,name=SnapshotsSize"));
-        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,keyspace=system,scope=compactions_in_progress,name=SnapshotsSize"));
-
-    }
-
-    private final String hostname;
-    private final int port;
-    private final ObjectName metricsObjectName = newObjectName("org.apache.cassandra.metrics:*");
+    protected static Map<String, Class<?>> mbeanClasses = Maps.newHashMap();
+    protected static Set<ObjectName> blacklist = Sets.newHashSet();
+    protected final ObjectName metricsObjectName = newObjectName("org.apache.cassandra.metrics:*");
 
     private JMXConnector jmxc;
     private MBeanServerConnection mbeanServerConn;
 
-    public JmxCollector() throws IOException {
+    protected JmxCollector() throws IOException {
         this(DEFAULT_JMX_HOST);
     }
 
-    public JmxCollector(String host) throws IOException {
+    protected JmxCollector(String host) throws IOException {
         this(host, DEFAULT_JMX_PORT);
     }
 
-    public JmxCollector(String host, int port) throws IOException {
-        this.hostname = checkNotNull(host, "host argument");
-        this.port = checkNotNull(port, "port argument");
-
+    protected JmxCollector(String host, int port) throws IOException {
         JMXServiceURL jmxUrl;
         try {
-            jmxUrl = new JMXServiceURL(String.format(FORMAT_URL, this.hostname, this.port));
+            jmxUrl = new JMXServiceURL(String.format(FORMAT_URL, host, port));
         }
         catch (MalformedURLException e) {
             throw new IllegalArgumentException(e.getMessage());
@@ -103,10 +80,7 @@ public class JmxCollector implements AutoCloseable {
         connect(jmxUrl);
     }
 
-    public JmxCollector(JMXServiceURL jmxUrl) throws IOException {
-        this.hostname = jmxUrl.getHost();
-        this.port = jmxUrl.getPort();
-
+    protected JmxCollector(JMXServiceURL jmxUrl) throws IOException {
         connect(jmxUrl);
     }
 
@@ -155,104 +129,7 @@ public class JmxCollector implements AutoCloseable {
 
     }
 
-
-    public void getCassandraSamples(SampleVisitor visitor) throws IOException {
-
-        for (ObjectInstance instance : getConnection().queryMBeans(this.metricsObjectName, null)) {
-            if (!interesting(instance.getObjectName()))
-                continue;
-
-            Object proxy = getMBeanProxy(instance);
-            ObjectName oName = instance.getObjectName();
-
-            int timestamp = (int) (System.currentTimeMillis() / 1000);
-
-            // Order matters here (for example: TimerMBean extends MeterMBean)
-
-            if (proxy instanceof JmxReporter.TimerMBean) {
-                JmxReporter.TimerMBean timer = (JmxReporter.TimerMBean)proxy;
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "50percentile", timer.get50thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "75percentile", timer.get75thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "95percentile", timer.get95thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "98percentile", timer.get98thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "99percentile", timer.get99thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "999percentile", timer.get999thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "1MinuteRate", timer.getOneMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "5MinuteRate", timer.getFiveMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "15MinuteRate", timer.getFifteenMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "count", timer.getCount(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "max", timer.getMax(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "mean", timer.getMean(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "meanRate", timer.getMeanRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "min", timer.getMin(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "stddev", timer.getStdDev(), timestamp));
-                continue;
-            }
-
-            if (proxy instanceof JmxReporter.MeterMBean) {
-                JmxReporter.MeterMBean meter = (JmxReporter.MeterMBean)proxy;
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "15MinuteRate", meter.getFifteenMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "1MinuteRate", meter.getOneMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "5MinuteRate", meter.getFiveMinuteRate(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "count", meter.getCount(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "meanRate", meter.getMeanRate(), timestamp));
-                continue;
-            }
-
-            if (proxy instanceof JmxReporter.HistogramMBean) {
-                JmxReporter.HistogramMBean histogram = (JmxReporter.HistogramMBean)proxy;
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "50percentile", histogram.get50thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "75percentile", histogram.get75thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "95percentile", histogram.get95thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "98percentile", histogram.get98thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "99percentile", histogram.get99thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "999percentile", histogram.get999thPercentile(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "max", histogram.getMax(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "mean", histogram.getMean(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "min", histogram.getMin(), timestamp));
-                visitor.visit(new JmxSample(Type.CASSANDRA, oName, "stddev", histogram.getStdDev(), timestamp));
-                continue;
-            }
-
-            if (proxy instanceof JmxReporter.GaugeMBean) {
-                // EstimatedRowSizeHistogram and EstimatedColumnCountHistogram are allegedly Gauge, but with a value
-                // of type of long[], we're left with little choice but to special-case them.  This borrows code from
-                // Cassandra to decode the array into a histogram (50p, 75p, 95p, 98p, 99p, min, and max).
-                String name = oName.getKeyProperty("name");
-                if (name.equals("EstimatedRowSizeHistogram") || name.equals("EstimatedColumnCountHistogram")) {
-                    Object value = ((JmxReporter.GaugeMBean) proxy).getValue();
-                    double[] percentiles = metricPercentilesAsArray((long[])value);
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "50percentile", percentiles[0], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "75percentile", percentiles[1], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "95percentile", percentiles[2], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "98percentile", percentiles[3], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "99percentile", percentiles[4], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "min", percentiles[5], timestamp));
-                    visitor.visit(new JmxSample(Type.CASSANDRA, oName, "max", percentiles[6], timestamp));
-                }
-                else {
-                    visitor.visit(new JmxSample(
-                            Type.CASSANDRA,
-                            oName,
-                            "value",
-                            ((JmxReporter.GaugeMBean) proxy).getValue(),
-                            timestamp));
-                }
-                continue;
-            }
-
-            if (proxy instanceof JmxReporter.CounterMBean) {
-                visitor.visit(new JmxSample(
-                        Type.CASSANDRA,
-                        oName,
-                        "count",
-                        ((JmxReporter.CounterMBean) proxy).getCount(),
-                        timestamp));
-                continue;
-            }
-        }
-
-    }
+    public abstract void getCassandraSamples(SampleVisitor visitor) throws IOException;
 
     @Override
     public void close() throws IOException {
@@ -261,17 +138,8 @@ public class JmxCollector implements AutoCloseable {
 
     @Override
     public String toString() {
-        return "JmxCollector [hostname="
-                + hostname
-                + ", port="
-                + port
-                + ", jmxc="
-                + jmxc
-                + ", mbeanServerConn="
-                + mbeanServerConn
-                + ", metricsObjectName="
-                + metricsObjectName
-                + "]";
+        return "JmxCollector [metricsObjectName=" + metricsObjectName + ", jmxc=" + jmxc + ", mbeanServerConn="
+                + mbeanServerConn + "]";
     }
 
     MBeanServerConnection getConnection() {
@@ -283,7 +151,7 @@ public class JmxCollector implements AutoCloseable {
     }
 
     /* TODO: Ideally, the "interesting" criteria should be configurable. */
-    private static Set<String> interestingTypes = Sets.newHashSet(
+    protected static Set<String> interestingTypes = Sets.newHashSet(
             "Cache",
             "ClientRequest",
             "ColumnFamily",
@@ -299,7 +167,7 @@ public class JmxCollector implements AutoCloseable {
             "CommitLog");
 
     /* XXX: This is a hot mess. */
-    private boolean interesting(ObjectName objName) {
+    protected boolean interesting(ObjectName objName) {
         if (blacklist.contains(objName))
             return false;
 
@@ -313,7 +181,7 @@ public class JmxCollector implements AutoCloseable {
         return false;
     }
 
-    private <T> T newPlatformMXBeanProxy(String domainType, String key, String val, Class<T> cls) throws IOException {
+    protected <T> T newPlatformMXBeanProxy(String domainType, String key, String val, Class<T> cls) throws IOException {
         return ManagementFactory.newPlatformMXBeanProxy(getConnection(), String.format("%s,%s=%s", domainType, key, val), cls); 
     }
 
@@ -324,7 +192,7 @@ public class JmxCollector implements AutoCloseable {
      * @param name and object name
      * @return the ObjectName instance corresponding to name
      */
-    private static ObjectName newObjectName(String name) {
+    protected static ObjectName newObjectName(String name) {
         try {
             return new ObjectName(name);
         }
@@ -334,7 +202,7 @@ public class JmxCollector implements AutoCloseable {
     }
 
     // Copy-pasta from o.a.cassandra.tools.NodeProbe
-    private double[] metricPercentilesAsArray(long[] counts)
+    protected double[] metricPercentilesAsArray(long[] counts)
     {
         double[] result = new double[7];
 
@@ -363,21 +231,6 @@ public class JmxCollector implements AutoCloseable {
         result[5] = metric.min();
         result[6] = metric.max();
         return result;
-    }
-
-    public static void main(String... args) throws IOException, Exception {
-
-        try (JmxCollector collector = new JmxCollector("localhost", 7100)) {
-            SampleVisitor visitor = new SampleVisitor() {
-                @Override
-                public void visit(JmxSample jmxSample) {
-                    if (jmxSample.getObjectName().getKeyProperty("type").equals("ColumnFamily"))
-                        System.err.printf("%s,%s=%s%n", jmxSample.getObjectName(), jmxSample.getMetricName(), jmxSample.getValue());
-                }
-            };
-            collector.getSamples(visitor);
-        }
-
     }
 
 }

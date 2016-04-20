@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wikimedia.cassandra.metrics.Discovery;
 import org.wikimedia.cassandra.metrics.JmxCollector;
+import org.wikimedia.cassandra.metrics.JmxCollectorFactory;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
@@ -61,7 +62,7 @@ public class Discover implements Job {
                 LOG.info("Found instance {}", jvm.getCassandraInstance());
                 LOG.debug("Verifying JMX connectivity...");
 
-                try (JmxCollector c = new JmxCollector(jvm.getJmxUrl())) {
+                try (JmxCollector c = JmxCollectorFactory.create(jvm.getJmxUrl())) {
                     // I don't know how this would happen, so it probably will.
                     if (jobs.contains(jvm.getCassandraInstance())) {
                         LOG.warn("Discovered instance with a matching job ({}); What gives?", jvm.getCassandraInstance());

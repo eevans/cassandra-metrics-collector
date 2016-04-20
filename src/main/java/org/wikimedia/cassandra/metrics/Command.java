@@ -41,7 +41,7 @@ public class Command {
             System.exit(1);
         }
 
-        try (JmxCollector collector = new JmxCollector(args[0], jmxPort)) {
+        try (JmxCollector collector = JmxCollectorFactory.create(args[0], jmxPort)) {
             if (Boolean.parseBoolean(System.getenv().get("DRY_RUN"))) {
                 collector.getSamples(new TsvVisitor(System.out, args[4]));
             }

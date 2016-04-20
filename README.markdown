@@ -2,7 +2,7 @@ cassandra-metrics-collector [![Build Status](https://travis-ci.org/wikimedia/cas
 ===========================
 
 Discovers running instances of Cassandra on the local machine, collects
-performance metrics (via JMX, using a domain socket), and writes them to
+performance metrics (via JMX), and writes them to
 [Graphite](https://github.com/graphite-project/graphite-web)/[Carbon](https://github.com/graphite-project/carbon)
 in a format compatible with the [Dropwizard metrics](http://metrics.dropwizard.io)
 GraphiteReporter.
@@ -81,3 +81,27 @@ Collect Cassandra metrics and write to netcat:
           --interval 15 \
           --carbon-host localhost \
           --carbon-port 2003 \
+
+Cassandra >= 2.2
+----------------
+Cassandra 2.2 broke backward compatibility by wrapping the
+[Dropwizard metrics](http://metrics.dropwizard.io) mbeans in delegators,
+(thus changing the name).  This service continues to default to Cassandra
+2.1 for the time-being (mostly because that is what the Wikimedia
+Foundation has standardized on).
+
+To enable support for Cassandra 2.2 you must start the service with the
+`-Dcassandra.version=v2_2` system property.  Additionally, since the uber
+jar does not currently contain the needed Cassandra class files, you cannot
+launch it as an executable jar, as described above.  To start the service
+and collect metrics for a Cassandra 2.2 instance, invoke Java using a
+classpath that contains your Cassandra 2.2.x jar file, and specify the
+main class as an argument.  For example:
+
+    $ export CLASSPATH=/path/to/apache-cassandra.jar:/path/to/cassandra-metrics-collector-<version>-jar-with-dependencies.jar
+    $ java -Dcassandra.version=v2_2 org.wikimedia.cassandra.metrics.service.Service \
+        --interval 15 \
+        --carbon-host localhost \
+        --carbon-port 2003
+
+*Note: You must disable `-XX:+PerfDisableSharedMem` in `cassandra-env.sh` for JVM auto-discovery to work (this will be fixed in a future release).*
