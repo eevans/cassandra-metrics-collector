@@ -69,6 +69,8 @@ public class JmxCollector implements AutoCloseable {
         blacklist = new HashSet<ObjectName>();
         blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,name=SnapshotsSize"));
         blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,keyspace=system,scope=compactions_in_progress,name=SnapshotsSize"));
+        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=Table,name=SnapshotsSize"));
+        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=Table,keyspace=system,scope=compactions_in_progress,name=SnapshotsSize"));
 
     }
 
@@ -297,7 +299,8 @@ public class JmxCollector implements AutoCloseable {
             "ThreadPools",
             "Compaction",
             "ReadRepair",
-            "CommitLog");
+            "CommitLog",
+            "Table");
 
     /* XXX: This is a hot mess. */
     private boolean interesting(ObjectName objName) {
