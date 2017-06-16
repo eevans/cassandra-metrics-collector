@@ -175,11 +175,12 @@ public class CarbonVisitor implements SampleVisitor, AutoCloseable {
 
         String propsString = oName.getKeyPropertyListString();
 
-        // If type=ColumnFamily, but keyspace=null, then add this metric to a special "all"
-        // keyspace. This is what Dropwizard's GraphiteReporter does, and we aim to be compatible.
-        if (oName.getKeyProperty("type").equals("ColumnFamily")) {
+        // If type=Table, but keyspace=null, then add this metric to a special
+        // "all" keyspace. This is what Dropwizard's GraphiteReporter does, and
+        // we aim to be compatible.
+        if (oName.getKeyProperty("type").equals("Table")) {
             if (oName.getKeyProperty("keyspace") == null) {
-                propsString = propsString.replaceFirst("type=ColumnFamily", "type=ColumnFamily,keyspace=all");
+                propsString = propsString.replaceFirst("type=Table", "type=Table,keyspace=all");
             }
         }
 

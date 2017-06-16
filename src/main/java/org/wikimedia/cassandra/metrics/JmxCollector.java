@@ -67,8 +67,6 @@ public class JmxCollector implements AutoCloseable {
         mbeanClasses.put("org.apache.cassandra.metrics.CassandraMetricsRegistry$JmxHistogram", CassandraMetricsRegistry.JmxHistogramMBean.class);
 
         blacklist = new HashSet<ObjectName>();
-        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,name=SnapshotsSize"));
-        blacklist.add(newObjectName("org.apache.cassandra.metrics:type=ColumnFamily,keyspace=system,scope=compactions_in_progress,name=SnapshotsSize"));
         blacklist.add(newObjectName("org.apache.cassandra.metrics:type=Table,name=SnapshotsSize"));
         blacklist.add(newObjectName("org.apache.cassandra.metrics:type=Table,keyspace=system,scope=compactions_in_progress,name=SnapshotsSize"));
 
@@ -288,12 +286,11 @@ public class JmxCollector implements AutoCloseable {
             "Cache",
             "Client",
             "ClientRequest",
-            "ColumnFamily",
             "Connection",
             "CQL",
             "DroppedMessage",
             "FileCache",
-            "IndexColumnFamily",
+            "IndexTable",
             "Storage",
             "Keyspace",
             "ThreadPools",
@@ -379,7 +376,7 @@ public class JmxCollector implements AutoCloseable {
             SampleVisitor visitor = new SampleVisitor() {
                 @Override
                 public void visit(JmxSample jmxSample) {
-                    if (jmxSample.getObjectName().getKeyProperty("type").equals("ColumnFamily"))
+                    if (jmxSample.getObjectName().getKeyProperty("type").equals("Table"))
                         System.err.printf("%s,%s=%s%n", jmxSample.getObjectName(), jmxSample.getMetricName(), jmxSample.getValue());
                 }
             };
