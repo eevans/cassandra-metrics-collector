@@ -53,11 +53,11 @@ public class GraphiteMetricNamesTest {
         Object[][] data = new Object[7][2];
         String prefix = "cassandra.host";
 
-        ObjectName oName = new ObjectName("org.apache.cassandra.metrics:type=ColumnFamily,keyspace=system_traces,scope=events,name=MemtableLiveDataSize");
+        ObjectName oName = new ObjectName("org.apache.cassandra.metrics:type=Table,keyspace=system_traces,scope=events,name=MemtableLiveDataSize");
         data[0] = new Object[] {
                 prefix,
                 newSample(Type.CASSANDRA, oName, "bytes"),
-                String.format("%s.org.apache.cassandra.metrics.ColumnFamily.system_traces.events.MemtableLiveDataSize.bytes", prefix)
+                String.format("%s.org.apache.cassandra.metrics.Table.system_traces.events.MemtableLiveDataSize.bytes", prefix)
         };
 
         oName = new ObjectName("org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=Sampler,name=MaxPoolSize");
