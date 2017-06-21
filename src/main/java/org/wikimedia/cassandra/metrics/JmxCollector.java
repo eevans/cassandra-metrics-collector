@@ -218,7 +218,7 @@ public class JmxCollector implements AutoCloseable {
                 // of type of long[], we're left with little choice but to special-case them.  This borrows code from
                 // Cassandra to decode the array into a histogram (50p, 75p, 95p, 98p, 99p, min, and max).
                 String name = oName.getKeyProperty("name");
-                if (name.equals("EstimatedRowSizeHistogram") || name.equals("EstimatedColumnCountHistogram")) {
+                if (name.equals("EstimatedPartitionSizeHistogram") || name.equals("EstimatedColumnCountHistogram")) {
                     Object value = ((CassandraMetricsRegistry.JmxGaugeMBean) proxy).getValue();
                     double[] percentiles = metricPercentilesAsArray((long[])value);
                     visitor.visit(new JmxSample(Type.CASSANDRA, oName, "50percentile", percentiles[0], timestamp));
