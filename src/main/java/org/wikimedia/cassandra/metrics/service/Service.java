@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.wikimedia.cassandra.metrics.Filter;
 import org.wikimedia.cassandra.metrics.FilterConfig;
 import org.wikimedia.cassandra.metrics.Utils;
+import org.wikimedia.cassandra.metrics.service.WatchFile.EventType;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 
@@ -53,6 +54,11 @@ public class Service {
     public static final String PREFIX_PREFIX = "cassandra";
 
     private static final Logger LOG = LoggerFactory.getLogger(Service.class);
+    private static final File STOPFILE;
+
+    static {
+        STOPFILE = new File(System.getenv().getOrDefault("STOPFILE", "/etc/cassandra-metrics-collector/disable"));
+    }
 
     @Inject
     private HelpOption help;
@@ -149,7 +155,30 @@ public class Service {
 
         scheduler.scheduleJob(statsJob, reportTrigger);
 
-        scheduler.start();
+        if (!STOPFILE.exists()) {
+            scheduler.start();
+        }
+        else {
+            LOG.warn("{} detected; Leaving scheduler in standby mode", STOPFILE);
+        }
+
+        Thread watcher = new Thread(new WatchFile(STOPFILE, new WatchFile.Task() {
+            @Override
+            public void execute(EventType type) throws SchedulerException {
+                switch (type) {
+                case CREATE:
+                    scheduler.standby();
+                    LOG.warn("{} detected; Putting scheduler in standby", STOPFILE);
+                    break;
+                case DELETE:
+                    scheduler.start();
+                    LOG.warn("{} was removed; Restarting scheduler", STOPFILE);
+                    break;
+                }
+            }
+        }));
+        watcher.setDaemon(true);
+        watcher.start();
 
     }
 
